@@ -14,64 +14,94 @@ from pymunk import Vec2d, BB
 import pymunk.pygame_util
 import pymunk.autogeometry
 
-import numpy
-
-xSize = 600
+xSize = 800
 ySize = 600
 
 COLLTYPE_DEFAULT = 0
 COLLTYPE_BORDER = 1
 COLLTYPE_BOOM = 101
 COLLTYPE_TERRAIN = 102
+COLLTYPE_PLAYER = 103
 
 space = pymunk.Space()
+
+terrain_surface = pygame.Surface((xSize,ySize))
+terrain_surface.fill(THECOLORS["white"])
+HP_surface = pygame.Surface((xSize,ySize))
+
+def clip(x, floor, ceil):
+ return max(min(x, ceil), floor)
+
+
+
+class PlayerBody(pymunk.Poly):
+    numberTouching = 0
+    HP = 100
+    def __init__(self, body, size=(10,10), transform=None, radius=0):
+        shape = pymunk.Poly.create_box(body, size)
+        super().__init__(body, shape.get_vertices(), transform, radius)
+        self.color = THECOLORS["red"]
+        self.friction = 100
+        self.collision_type = COLLTYPE_PLAYER
+
 class PlayerModel:
-    def __init__(self):
-        mass = .1
+    def __init__(self, position =  [xSize/2,ySize/4]):
+        mass = .3
         moment = pymunk.moment_for_box(mass, [0, 10])
         self.bodyReference = pymunk.Body(mass, moment)
-        self.bodyReference.position = [xSize/2,ySize/4]
-        shape = pymunk.Poly.create_box(self.bodyReference)
-        shape.friction = 100
-        space.add(self.bodyReference, shape)
-    def handle(self):
+        self.bodyReference.position = position
+        self.shape = PlayerBody(self.bodyReference)
+        space.add(self.bodyReference, self.shape)
+    def makeMovement(self):
         keys_pressed = pygame.key.get_pressed()
-        #currentVelocity = self.bodyReference._get_velocity()
-        #if keys_pressed[pygame.K_LEFT]:
-        #    self.bodyReference._set_velocity([-10, currentVelocity[1]])
-        #elif keys_pressed[pygame.K_RIGHT]:
-        #    self.bodyReference._set_velocity([10, currentVelocity[1]])
-        #else:
-        #    self.bodyReference._set_velocity([0, currentVelocity[1]])
-        #if keys_pressed[pygame.K_UP]:
-        #    self.bodyReference._set_velocity([currentVelocity[0],-10])
-        #elif keys_pressed[pygame.K_DOWN]:
-        #    self.bodyReference._set_velocity([currentVelocity[0],10])
-        #else:
-        #    self.bodyReference._set_velocity([currentVelocity[0],0])
         targetForce = [0,0]
         if keys_pressed[pygame.K_LEFT]:
-            targetForce [0] = -100;
+            if self.shape.numberTouching > 0:
+                targetForce [0] = -1000;
+            else:
+                targetForce [0] = -100;
         elif keys_pressed[pygame.K_RIGHT]:
-            targetForce [0] = 100;
-        if keys_pressed[pygame.K_UP]:
-            targetForce [1] = -100;
+            if self.shape.numberTouching > 0:
+                targetForce [0] = 1000;
+            else:
+                targetForce [0] = 100;
+        if keys_pressed[pygame.K_UP] and self.shape.numberTouching > 0:
+            targetForce [1] = -20000;
         self.bodyReference._set_force(targetForce)
+        v = self.bodyReference._get_velocity()
+        self.bodyReference._set_velocity([clip(v[0], -100, 100), clip(v[1], -270, 400)])
+    def handle(self):
+        self.makeMovement()
+    def shoot(self):
+        body = makeBomb(self.bodyReference.position,10)
+        body._set_velocity((pygame.mouse.get_pos() - self.bodyReference.position)*3)
+    def setHP(self, delta):
+        self.shape.HP += delta
+    def getDistance(self, point):
+        return ((self.bodyReference.position[0] - point[0])**2 + (self.bodyReference.position[1] - point[1])**2)**0.5
 
-activeActor = PlayerModel()
+actors = [PlayerModel(), PlayerModel()]
+activeActor = actors[0]
+aID = 0;
 
-def draw_helptext(screen):
-    font = pygame.font.Font(None, 16)
-    text = ["LMB(hold): Draw pink color",
-            "LMB(hold) + Shift: Create balls",
-            "g: Generate segments from pink color drawing",
-            "r: Reset",
-            ]
-    y = 5
-    for line in text:
-        text = font.render(line, 1,THECOLORS["black"])
-        screen.blit(text, (5,y))
-        y += 10
+#def draw_helptext(screen):
+#    font = pygame.font.Font(None, 16)
+#    text = ["LMB(hold): Draw pink color",
+#            "LMB(hold) + Shift: Create balls",
+#            "g: Generate segments from pink color drawing",
+#            "r: Reset",
+#            ]
+#    y = 5
+#    for line in text:
+#        text = font.render(line, 1,THECOLORS["black"])
+#        screen.blit(text, (5,y))
+#        y += 10
+
+def drawHP(screen):
+    font = pygame.font.Font(None, 20)
+    for a in actors:
+        text = font.render(str(a.shape.HP), 1,THECOLORS["black"])
+        screen.blit(text, (a.bodyReference.position[0], a.bodyReference.position[1]-20))
 
 def generate_geometry(surface, space):
     for s in space.shapes:
@@ -91,39 +121,113 @@ def generate_geometry(surface, space):
         line_set.collect_segment(v0, v1)
     
     pymunk.autogeometry.march_soft(
-        BB(0,0,xSize - 1,ySize - 1), 200, 200, 90, segment_func, sample_func) #generateBounding
+        BB(0,0,xSize - 1,ySize - 1), 200, 200, 92, segment_func, sample_func) #generateBounding
 
     for polyline in line_set:
-        line = pymunk.autogeometry.simplify_curves(polyline, 0.5)
-        #line = polyline
-        #print(line)
-        #line2 = []
-        #oldFit = numpy.polyfit([line[len(line)-1][0], line[0][0], line[1][0]], [line[len(line)-1][1], line[0][1], line[1][1]],2)
-        #for i in range(len(line)-2):
-        #    #line2.append(line[i])
-        #    fit = numpy.polyfit([line[i][0], line[i+1][0], line[i+2][0]], [line[i][1], line[i+1][1], line[i+2][1]],2)
-        #    newX = (line[i][0] + line[i+1][0])/2
-        #    line2.append(Vec2d(newX,(numpy.polyval(fit, newX) + numpy.polyval(oldFit, newX))/2))
-        #    oldFit = fit
-        #line2.append(line[len(line)-1])
-        #newX = (line[0][0] + line[len(line)-1][0])/2
-        #fit = numpy.polyfit([line[len(line)-2][0],line[len(line)-1][0], line[0][0]], [line[len(line)-2][1], line[len(line)-1][1], line[0][1]],2)
-
-        #line = line2
+        line = pymunk.autogeometry.simplify_curves(polyline, 0.8)
         for i in range(len(line)-1):
             p1 = line[i]
             p2 = line[i+1]
-            shape = pymunk.Segment(space.static_body, p1, p2, 0.5)
+            shape = pymunk.Segment(space.static_body, p1, p2, 1)
             shape.friction = 1
-            shape.color = pygame.color.THECOLORS["black"]
+            shape.color = THECOLORS["grey"]
             shape.generated = True
             shape.collision_type = COLLTYPE_TERRAIN
             space.add(shape) 
 
+def makeBomb(position, size):
+    mass = 1
+    moment = pymunk.moment_for_circle(mass, 0, 10)
+    body = pymunk.Body(mass, moment)
+    body.position = position
+    shape = Bomb(body, size/5, size)
+    shape.friction = .5
+    shape.collision_type = COLLTYPE_BOOM
+    space.add(body, shape)
+    return body
+
+class Bomb(pymunk.Circle): 
+    exploded = False
+    explosionSize = 30
+    def __init__(self, body, radius, size, offset = (0, 0)):
+        super().__init__(body, radius, offset)
+        self.explosionSize = size
+        self.color = THECOLORS["black"]
+
+def BOOM(arbiter, space, data):
+    x = arbiter.shapes[0]
+    if not x.exploded:
+        x.exploded = True
+        position = x._get_body()._get_position()
+        pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(position[0]), int(position[1])], x.explosionSize)
+        generate_geometry(terrain_surface, space)
+        for a in actors:
+            a.setHP(-int(x.explosionSize*20000.0/a.getDistance(position)**3))
+    space.remove(x.body, x)
+    return False
+
+def ignore(a,s,d):
+    return False
+
+def beginTouching(a,s,d):
+    a.shapes[0].numberTouching += 1
+    return True
+
+def endTouching(a,s,d):
+    a.shapes[0].numberTouching -= 1
+    return True
+
+space.add_collision_handler(COLLTYPE_BOOM, COLLTYPE_TERRAIN).pre_solve = BOOM
+space.add_collision_handler(COLLTYPE_DEFAULT, COLLTYPE_BOOM).pre_solve = ignore
+space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_BOOM).pre_solve = ignore
+space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_TERRAIN).begin = beginTouching
+space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_TERRAIN).separate = endTouching
+
+def handleInputs():
+    global activeActor
+    global aID
+    global actors
+    events = pygame.event.get()
+    for event in events:
+        if event.type == QUIT or \
+            event.type == KEYDOWN and (event.key in [K_ESCAPE, K_q]):  
+            sys.exit(0)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and (pygame.key.get_mods() & KMOD_CTRL):
+            makeBomb(event.pos, 30)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and (pygame.key.get_mods() & KMOD_SHIFT):       
+            activeActor.shoot()           
+        elif event.type == KEYDOWN and event.key == K_r:
+            terrain_surface.fill(THECOLORS["white"])
+            for s in space.shapes:
+                if hasattr(s, "generated") and s.generated:
+                    space.remove(s)
+
+        elif event.type == KEYDOWN and event.key == K_b:
+            aID = (aID + 1)%len(actors)
+            activeActor = actors[aID]
+
+        elif event.type == KEYDOWN and event.key == K_g:
+            generate_geometry(terrain_surface, space)
+
+        elif event.type == KEYDOWN and event.key == K_p:
+            pygame.image.save(screen, "deformable.png")
+    
+    if pygame.mouse.get_pressed()[0]:
+        if pygame.key.get_mods() & KMOD_SHIFT:
+            pass
+        elif pygame.key.get_mods() & KMOD_CTRL:
+            pass
+        else:
+            color = THECOLORS["pink"] 
+            pos =  pygame.mouse.get_pos()
+            pygame.draw.circle(terrain_surface, color, pos, 25)
+
+    activeActor.handle()
+
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((xSize,ySize),HWSURFACE|DOUBLEBUF|RESIZABLE)
+    screen = pygame.display.set_mode((xSize,ySize))     #TODO? resizable
     clock = pygame.time.Clock()
     space.gravity = 0,980
     static= [
@@ -136,108 +240,28 @@ def main():
         s.collision_type = COLLTYPE_BORDER
     space.add(static)
 
-
     def cRemove(arb, space, data):
         s = arb.shapes[0]
         space.remove(s.body, s)
         return False
     space.add_collision_handler(COLLTYPE_DEFAULT, COLLTYPE_BORDER).pre_solve = cRemove
-
-    terrain_surface = pygame.Surface((xSize,ySize))
-    terrain_surface.fill(pygame.color.THECOLORS["white"])
-
-
-    color = pygame.color.THECOLORS["pink"] 
+    color = THECOLORS["pink"] 
     pygame.draw.line(terrain_surface, color, (0,ySize*3/4), (xSize,ySize*3/4), 100)
-    #pygame.draw.circle(terrain_surface, color, (450,120), 100)
     generate_geometry(terrain_surface, space)
-    #for x in range(25):
-    #    mass = 1
-    #    moment = pymunk.moment_for_circle(mass, 0, 10)
-    #    body = pymunk.Body(mass, moment)
-    #    body.position = 450, 120
-    #    shape = pymunk.Circle(body, 10)
-    #    shape.friction = .5
-    #    space.add(body, shape)
 
 
     draw_options = pymunk.pygame_util.DrawOptions(screen)
     pymunk.pygame_util.positive_y_is_up = False #using pygame coordinates
 
     fps = 120
-
-    class Bomb(pymunk.Circle):
-        def __init__(self, body, radius, offset = (0, 0)):
-            super().__init__(body, radius, offset)
-            self.color = [0,0,0]
-        exploded = False
-        explosionSize = 30
-
-    def BOOM(arbiter, space, data):
-        x = arbiter.shapes[0]
-        if not x.exploded:
-            x.exploded = True
-            position = x._get_body()._get_position()
-            pygame.draw.circle(terrain_surface, pygame.color.THECOLORS["white"], [int(position[0]), int(position[1])], x.explosionSize)
-            generate_geometry(terrain_surface, space)
-        space.remove(x.body, x)
-        return(False)
-
-    def ignore(a,s,d):
-        return False
-
-    space.add_collision_handler(COLLTYPE_BOOM, COLLTYPE_TERRAIN).pre_solve = BOOM
-    space.add_collision_handler(COLLTYPE_DEFAULT, COLLTYPE_BOOM).pre_solve = ignore
-
     while True:
-        events = pygame.event.get()
-        for event in events:
-            if event.type == QUIT or \
-                event.type == KEYDOWN and (event.key in [K_ESCAPE, K_q]):  
-                sys.exit(0)
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and (pygame.key.get_mods() & KMOD_CTRL): #mouse clicked while holding ctrl
-                mass = 1
-                moment = pymunk.moment_for_box(mass, [0, 10])
-                body = pymunk.Body(mass, moment)
-                body.position = event.pos
-                shape = Bomb(body, 10)
-                shape.friction = .5
-                shape.collision_type = COLLTYPE_BOOM
-                space.add(body, shape)
-            elif event.type == KEYDOWN and event.key == K_r:
-                terrain_surface.fill(pygame.color.THECOLORS["white"])
-                for s in space.shapes:
-                    if hasattr(s, "generated") and s.generated:
-                        space.remove(s)
-
-            elif event.type == KEYDOWN and event.key == K_b:
-                for s in space.shapes:
-                    print(s, hasattr(s, "generated"))
-
-            elif event.type == KEYDOWN and event.key == K_g:
-                generate_geometry(terrain_surface, space)
-
-            elif event.type == KEYDOWN and event.key == K_p:
-                pygame.image.save(screen, "deformable.png")
-        
-        if pygame.mouse.get_pressed()[0]:
-            if pygame.key.get_mods() & KMOD_SHIFT:
-                pass           
-            elif pygame.key.get_mods() & KMOD_CTRL:
-                pass
-            else:
-                color = pygame.color.THECOLORS["pink"] 
-                pos =  pygame.mouse.get_pos()
-                pygame.draw.circle(terrain_surface, color, pos, 25)
-
-        activeActor.handle()
-
+        handleInputs()
         space.step(1./fps)
         
-        screen.fill(pygame.color.THECOLORS["white"])
+        screen.fill(THECOLORS["white"])
         screen.blit(terrain_surface, (0,0))
         space.debug_draw(draw_options)
-        draw_helptext(screen)
+        drawHP(screen)
         pygame.display.flip()
 
         clock.tick(fps)
