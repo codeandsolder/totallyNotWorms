@@ -133,6 +133,7 @@ class PlayerModel:
 
 actors = [PlayerModel([xSize/4,ySize/4]), PlayerModel([xSize/2,ySize/4]), PlayerModel([xSize*3/4,ySize/4])]
 activeActor = actors[0]
+activeActor.setColor(THECOLORS["green"])
 aID = 0
 activeWeapon = 1
 
@@ -269,22 +270,33 @@ def BOOM(a,s,d):
 def ignore(a,s,d):
     return False
 
-def beginTouching(a,s,d):
+def beginTouchingP(a,s,d):
+    a.shapes[0].numberTouching += 1
+    a.shapes[1].numberTouching += 1
+    return True
+
+def endTouchingP(a,s,d):
+    a.shapes[0].numberTouching -= 1
+    a.shapes[1].numberTouching -= 1
+    return True
+
+def beginTouchingG(a,s,d):
     a.shapes[0].numberTouching += 1
     return True
 
-def endTouching(a,s,d):
+def endTouchingG(a,s,d):
     a.shapes[0].numberTouching -= 1
     return True
+
 
 space.add_collision_handler(COLLTYPE_BOOM, COLLTYPE_TERRAIN).pre_solve = BOOM
 space.add_collision_handler(COLLTYPE_DEFAULT, COLLTYPE_BOOM).pre_solve = ignore
 space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_BOOM).pre_solve = ignore
 space.add_collision_handler(COLLTYPE_BOOM, COLLTYPE_BOOM).pre_solve = ignore
-space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_TERRAIN).begin = beginTouching
-space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_TERRAIN).separate = endTouching
-space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_PLAYER).begin = beginTouching
-space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_PLAYER).separate = endTouching
+space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_TERRAIN).begin = beginTouchingG
+space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_TERRAIN).separate = endTouchingG
+space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_PLAYER).begin = beginTouchingP
+space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_PLAYER).separate = endTouchingP
 
 def handleInputs():
     global activeActor
@@ -315,8 +327,8 @@ def handleInputs():
         elif event.type == KEYDOWN and event.key == K_e:
             for a in actors:
                 a.setHP(100)
-
-        elif event.type == KEYDOWN and event.key == K_g:
+       
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and (pygame.key.get_mods() & KMOD_CTRL):
             generate_geometry(terrain_surface, space)
 
         elif event.type == KEYDOWN and event.key == K_1:
@@ -329,12 +341,12 @@ def handleInputs():
             activeWeapon = 3
     
     if pygame.mouse.get_pressed()[0]:
-        if pygame.key.get_mods() & KMOD_SHIFT:
-            pass
-        elif pygame.key.get_mods() & KMOD_CTRL:
+        #if pygame.key.get_mods() & KMOD_SHIFT:
+        #    pass
+        if pygame.key.get_mods() & KMOD_CTRL:
             color = THECOLORS["pink"] 
             pos =  pygame.mouse.get_pos()
-            pygame.draw.circle(terrain_surface, color, pos, 25)
+            pygame.draw.circle(terrain_surface, color, pos, 20)
         else:
         #    activeActor.shoot()
             pass
