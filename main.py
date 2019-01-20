@@ -17,6 +17,8 @@ from pymunk import Vec2d, BB
 import pymunk.pygame_util
 import pymunk.autogeometry
 
+import numpy
+
 xSize = 800
 ySize = 600
 
@@ -134,9 +136,11 @@ class PlayerModel:
         self.bodyReference._set_velocity([clip(v[0], -100, 100), clip(v[1], -270, 400)])
     def handle(self):
         self.makeMovement()
+        if not (self.bodyReference.position[0] >= 0 and self.bodyReference.position[0] <= xSize and self.bodyReference.position[1] >= 0 and self.bodyReference.position[1] <= ySize):
+            self.setHP(-1)
     def shoot(self):
         if activeWeapon == 1:
-            velocity = (pygame.mouse.get_pos() - self.bodyReference.position)*3
+            velocity = (pygame.mouse.get_pos() - self.bodyReference.position)/self.getDistance(pygame.mouse.get_pos())*clip(self.getDistance(pygame.mouse.get_pos()), 0, 300)*3
             body = makeMissileR(self.bodyReference.position,10, 3, velocity)
         if activeWeapon == 2:
             velocity = (pygame.mouse.get_pos() - self.bodyReference.position)/self.getDistance(pygame.mouse.get_pos())*500
@@ -221,14 +225,14 @@ def generate_geometry(surface, space):
         line_set.collect_segment(v0, v1)
     
     pymunk.autogeometry.march_soft(
-        BB(0,0,xSize - 1,ySize - 1), 200, 200, 92, segment_func, sample_func) #generateBounding
+        BB(0,0,xSize - 1,ySize - 1), 250, 250, 92, segment_func, sample_func) #generateBounding
 
     for polyline in line_set:
         line = pymunk.autogeometry.simplify_curves(polyline, 0.8)
         for i in range(len(line)-1):
             p1 = line[i]
             p2 = line[i+1]
-            shape = pymunk.Segment(space.static_body, p1, p2, 1)
+            shape = pymunk.Segment(space.static_body, p1, p2, 2)
             shape.friction = 1
             shape.color = THECOLORS["grey"]
             shape.generated = True
@@ -402,6 +406,27 @@ def handleInputs():
 
     actors[aID[0]][aID[1]].handle()
 
+def generateTerrain():
+    color = THECOLORS["green"] 
+    pygame.draw.line(terrain_surface, color, (0,ySize-10), (xSize,ySize-10), 20)
+    pygame.draw.line(terrain_surface, color, (0,0), (0,ySize), 5)
+    pygame.draw.line(terrain_surface, color, (xSize,0), (xSize,ySize), 5)
+    for i in range(random.randint(4,7)):
+        cSize = random.randint(5, 15)
+        coords = [random.randint(0, xSize),random.randint(ySize/3, ySize*2/5)]
+        while coords[1] < ySize+100:
+            pygame.draw.circle(terrain_surface, color, coords, cSize)
+            coords = [coords[0] + random.randint(int(-xSize/16), int(xSize/16)), coords[1] + random.randint(0, int(ySize/18))]
+            cSize += random.randint(1, 5)            
+    for i in range(random.randint(10,15)):
+        cSize = random.randint(3, 10)
+        coords = [random.randint(0, xSize),random.randint(ySize*2/3, ySize)]
+        while coords[1] < ySize+100:
+            pygame.draw.circle(terrain_surface, color, coords, cSize)
+            coords = [coords[0] + random.randint(int(-xSize/16), int(xSize/16)), coords[1] + random.randint(0, int(ySize/18))]
+            cSize += random.randint(1, 5)
+    generate_geometry(terrain_surface, space)
+
 def main():
     global actors
     global aID
@@ -430,10 +455,9 @@ def main():
         space.remove(s.body, s)
         return False
     space.add_collision_handler(COLLTYPE_DEFAULT, COLLTYPE_BORDER).pre_solve = cRemove
-    color = THECOLORS["pink"] 
-    pygame.draw.line(terrain_surface, color, (0,ySize*3/4), (xSize,ySize*3/4), 100)
-    generate_geometry(terrain_surface, space)
+    space.add_collision_handler(COLLTYPE_BOOM, COLLTYPE_BORDER).pre_solve = cRemove
 
+    generateTerrain()
 
     draw_options = pymunk.pygame_util.DrawOptions(screen)
     pymunk.pygame_util.positive_y_is_up = False #using pygame coordinates
