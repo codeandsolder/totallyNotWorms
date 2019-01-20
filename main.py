@@ -5,6 +5,8 @@ __docformat__ = "reStructuredText"
 
 import sys
 
+from os import path
+
 import pygame
 from pygame.locals import *
 from pygame.color import *
@@ -32,7 +34,34 @@ HP_surface = pygame.Surface((xSize,ySize))
 def clip(x, floor, ceil):
  return max(min(x, ceil), floor)
 
+explosion_anim = {}
+explosion_anim[15] = []
+explosion_anim[30] = []
 
+
+class Explosion(pygame.sprite.Sprite):
+    def __init__(self, center, size):
+        pygame.sprite.Sprite.__init__(self)
+        self.size = size
+        self.image = explosion_anim[self.size][0]
+        self.rect = self.image.get_rect()
+        self.rect.center = center
+        self.frame = 0
+        self.last_update = pygame.time.get_ticks()
+        self.frame_rate = 30
+
+    def update(self):
+        now = pygame.time.get_ticks()
+        if now - self.last_update > self.frame_rate:
+            self.last_update = now
+            self.frame += 1
+            if self.frame == len(explosion_anim[self.size]):
+                self.kill()
+            else:
+                center = self.rect.center
+                self.image = explosion_anim[self.size][self.frame]
+                self.rect = self.image.get_rect()
+                self.rect.center = center
 
 class PlayerBody(pymunk.Poly):
     numberTouching = 0
@@ -73,7 +102,7 @@ class PlayerModel:
     def handle(self):
         self.makeMovement()
     def shoot(self):
-        body = makeBomb(self.bodyReference.position,10)
+        body = makeBomb(self.bodyReference.position,15)
         body._set_velocity((pygame.mouse.get_pos() - self.bodyReference.position)*3)
     def setHP(self, delta):
         self.shape.HP += delta
@@ -162,8 +191,10 @@ def BOOM(arbiter, space, data):
         pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(position[0]), int(position[1])], x.explosionSize)
         generate_geometry(terrain_surface, space)
         for a in actors:
-            a.setHP(-int(x.explosionSize*20000.0/a.getDistance(position)**3))
-    space.remove(x.body, x)
+            a.setHP(-int(x.explosionSize*500000.0/(a.getDistance(position)+10)**3.5))
+        space.remove(x.body, x)
+        expl = Explosion(position, x.explosionSize)
+        all_sprites.add(expl)
     return False
 
 def ignore(a,s,d):
@@ -224,6 +255,8 @@ def handleInputs():
 
     activeActor.handle()
 
+all_sprites = pygame.sprite.Group()
+img_dir = path.join(path.dirname(__file__), 'img')
 
 def main():
     pygame.init()
@@ -253,6 +286,15 @@ def main():
     draw_options = pymunk.pygame_util.DrawOptions(screen)
     pymunk.pygame_util.positive_y_is_up = False #using pygame coordinates
 
+    for i in range(9):
+        filename = 'regularExplosion0{}.png'.format(i)
+        img = pygame.image.load(path.join(img_dir, filename)).convert()
+        img.set_colorkey(THECOLORS["black"])
+        img_lg = pygame.transform.scale(img, (60, 60))
+        explosion_anim[30].append(img_lg)
+        img_sm = pygame.transform.scale(img, (30, 30))
+        explosion_anim[15].append(img_sm)
+
     fps = 120
     while True:
         handleInputs()
@@ -262,6 +304,8 @@ def main():
         screen.blit(terrain_surface, (0,0))
         space.debug_draw(draw_options)
         drawHP(screen)
+        all_sprites.update()        
+        all_sprites.draw(screen)
         pygame.display.flip()
 
         clock.tick(fps)
