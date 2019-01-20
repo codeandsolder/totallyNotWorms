@@ -234,7 +234,7 @@ class Bomb(pymunk.Circle):
     def clusterSpawn(self):
         position = self._get_body()._get_position()
         for i in range(10):
-            makeMissileR(position - [0,10],4, 3, [random.randint(-60,60), random.randint(-420, -200)])
+            makeMissileR(position - [0,10],5, 3, [random.randint(-60,60), random.randint(-420, -200)])
         #makeMissile(position,6, [20,-400])
         #makeMissile(position,6, [0,-420])
         #makeMissile(position,6, [-20,-400])
@@ -246,12 +246,15 @@ class Bomb(pymunk.Circle):
         pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(position[0]), int(position[1])], self.explosionSize)
         generate_geometry(terrain_surface, space)
         for a in actors:
-            a.modHP(-int(self.explosionSize**1.4*50000.0/a.getDistance(position)**3.5))
+            a.modHP(-clip(int(self.explosionSize**2*30000.0/a.getDistance(position)**4), 0, self.explosionSize*5))
         if self in bombs:
             bombs.remove(self)
         if(self.cluster):
             self.clusterSpawn()
-        space.remove(self.body, self)
+        try:
+            space.remove(self.body, self)
+        except:
+            pass
     def update(self):
         if (pygame.time.get_ticks() - self.launchTime)/1000 >= self.timeout:
             self.explode()
