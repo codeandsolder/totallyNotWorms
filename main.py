@@ -28,6 +28,7 @@ COLLTYPE_PLAYER = 103
 FPS = 120
 
 space = pymunk.Space()
+screen = pygame.display.set_mode((xSize,ySize))     #TODO? resizable
 bombs = []
 
 terrain_surface = pygame.Surface((xSize,ySize))
@@ -83,6 +84,25 @@ class PlayerBody(pymunk.Poly):
         self.friction = 100
         self.collision_type = COLLTYPE_PLAYER
 
+def endGame(winningTeam):    
+    font = pygame.font.Font(None, 120)
+    text = font.render("Team {} won!".format(winningTeam), 1,THECOLORS["black"])
+    while True:
+        draw_options = pymunk.pygame_util.DrawOptions(screen)
+        screen.fill(THECOLORS["white"])
+        screen.blit(terrain_surface, (0,0))
+        space.debug_draw(draw_options)
+        drawOverlays(screen)
+        draw_helptext(screen)
+        all_sprites.update()        
+        all_sprites.draw(screen)
+        screen.blit(text, (100, ySize/2-50))
+        pygame.display.flip()    
+        pygame.display.update()
+        clock.tick(FPS)
+        for event in pygame.event.get():
+            if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):  
+                sys.exit(0)
 class PlayerModel:
     HP = 100
     team = 0
@@ -92,6 +112,7 @@ class PlayerModel:
         self.bodyReference = pymunk.Body(mass, moment)
         self.bodyReference.position = position
         self.shape = PlayerBody(self.bodyReference)
+        self.team = team
         space.add(self.bodyReference, self.shape)
     def makeMovement(self):
         keys_pressed = pygame.key.get_pressed()
@@ -124,9 +145,17 @@ class PlayerModel:
             velocity = (pygame.mouse.get_pos() - self.bodyReference.position)/self.getDistance(pygame.mouse.get_pos())*500
             body = makeGrenadeR(self.bodyReference.position - [0,20],15, 2, 5, velocity, True)
     def modHP(self, delta):
-        self.HP += delta
+        self.setHP(self.HP + delta)
     def setHP(self, val):
         self.HP = val
+        if self.HP <= 0:
+            actors[self.team].remove(self)
+            self.setColor(THECOLORS["black"])
+            if len(actors[self.team]) == 0:
+                endGame(1 - self.team)
+                return
+            aID[1] = 0
+            updateColors()
     def getDistance(self, point):
         return ((self.bodyReference.position[0] - point[0])**2 + (self.bodyReference.position[1] - point[1])**2)**0.5
     def setColor(self, color):
@@ -258,9 +287,6 @@ class Bomb(pymunk.Circle):
         all_sprites.add(expl)
         pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(position[0]), int(position[1])], self.explosionSize)
         generate_geometry(terrain_surface, space)
-        for t in actors:
-            for a in t:
-                a.modHP(-clip(int(self.explosionSize*300000.0/a.getDistance(position)**4), 0, self.explosionSize*5))
         if self in bombs:
             bombs.remove(self)
         if(self.cluster):
@@ -269,6 +295,9 @@ class Bomb(pymunk.Circle):
             space.remove(self.body, self)
         except:
             pass
+        for t in actors:
+            for a in t:
+                a.modHP(-clip(int(self.explosionSize*300000.0/a.getDistance(position)**4), 0, self.explosionSize*5))
     def update(self):
         if (pygame.time.get_ticks() - self.launchTime)/1000 >= self.timeout:
             self.explode()
@@ -318,7 +347,7 @@ def handleInputs():
     events = pygame.event.get()
     for event in events:
         if event.type == QUIT or \
-            event.type == KEYDOWN and (event.key in [K_ESCAPE, K_q]):  
+            event.type == KEYDOWN and (event.key in [K_ESCAPE]):  
             sys.exit(0)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not (pygame.key.get_mods() & KMOD_CTRL):
             actors[aID[0]][aID[1]].shoot()
@@ -332,6 +361,10 @@ def handleInputs():
 
         elif event.type == KEYDOWN and event.key == K_TAB:
             aID = [aID[0], (aID[1] + 1)%len(actors[aID[0]])]
+            updateColors()
+
+        elif event.type == KEYDOWN and event.key == K_q:
+            aID = [(aID[0] + 1)%len(actors), aID[1]]
             updateColors()
 
         elif event.type == KEYDOWN and event.key == K_e:
@@ -372,13 +405,14 @@ def handleInputs():
 def main():
     global actors
     global aID
+    global screen
+    global clock
     createActor([xSize*1/7,ySize/5], 0)
     createActor([xSize*2/7,ySize/5], 0)
     createActor([xSize*5/7,ySize/5], 1)
     createActor([xSize*6/7,ySize/5], 1)
     updateColors()
     pygame.init()
-    screen = pygame.display.set_mode((xSize,ySize))     #TODO? resizable
     clock = pygame.time.Clock()
     space.gravity = 0,980
     static= [
@@ -404,9 +438,8 @@ def main():
     draw_options = pymunk.pygame_util.DrawOptions(screen)
     pymunk.pygame_util.positive_y_is_up = False #using pygame coordinates
     while True:
-        handleInputs()
         space.step(1./FPS)
-        
+        handleInputs()            
         screen.fill(THECOLORS["white"])
         screen.blit(terrain_surface, (0,0))
         space.debug_draw(draw_options)
@@ -416,8 +449,8 @@ def main():
             b.update()
         all_sprites.update()        
         all_sprites.draw(screen)
-        pygame.display.flip()
 
+        pygame.display.flip()
         clock.tick(FPS)
         pygame.display.set_caption("fps: " + str(clock.get_fps()))
 
