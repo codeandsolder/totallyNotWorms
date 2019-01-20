@@ -35,14 +35,22 @@ def clip(x, floor, ceil):
  return max(min(x, ceil), floor)
 
 explosion_anim = {}
-explosion_anim[15] = []
-explosion_anim[30] = []
 
+all_sprites = pygame.sprite.Group()
+img_dir = path.join(path.dirname(__file__), 'img')
 
-class Explosion(pygame.sprite.Sprite):
+class Explosion(pygame.sprite.Sprite): #https://github.com/kidscancode/pygame_tutorials/blob/master/shmup/shmup-10.py
     def __init__(self, center, size):
         pygame.sprite.Sprite.__init__(self)
         self.size = size
+        if(self.size not in explosion_anim):
+            explosion_anim[self.size] = []
+            for i in range(9):
+                filename = 'regularExplosion0{}.png'.format(i)
+                img = pygame.image.load(path.join(img_dir, filename)).convert()
+                img.set_colorkey(THECOLORS["black"])
+                imgBuffer = pygame.transform.scale(img, (self.size*2, self.size*2))
+                explosion_anim[self.size].append(imgBuffer)
         self.image = explosion_anim[self.size][0]
         self.rect = self.image.get_rect()
         self.rect.center = center
@@ -104,12 +112,14 @@ class PlayerModel:
     def shoot(self):
         body = makeBomb(self.bodyReference.position,15)
         body._set_velocity((pygame.mouse.get_pos() - self.bodyReference.position)*3)
-    def setHP(self, delta):
+    def modHP(self, delta):
         self.shape.HP += delta
+    def setHP(self, val):
+        self.shape.HP = val
     def getDistance(self, point):
         return ((self.bodyReference.position[0] - point[0])**2 + (self.bodyReference.position[1] - point[1])**2)**0.5
 
-actors = [PlayerModel(), PlayerModel()]
+actors = [PlayerModel([xSize/4,ySize/4]), PlayerModel([xSize*3/4,ySize/4])]
 activeActor = actors[0]
 aID = 0;
 
@@ -188,13 +198,13 @@ def BOOM(arbiter, space, data):
     if not x.exploded:
         x.exploded = True
         position = x._get_body()._get_position()
+        expl = Explosion(position, x.explosionSize)
+        all_sprites.add(expl)
         pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(position[0]), int(position[1])], x.explosionSize)
         generate_geometry(terrain_surface, space)
         for a in actors:
-            a.setHP(-int(x.explosionSize*500000.0/(a.getDistance(position)+10)**3.5))
+            a.modHP(-int(x.explosionSize**1.4*50000.0/a.getDistance(position)**3.5))
         space.remove(x.body, x)
-        expl = Explosion(position, x.explosionSize)
-        all_sprites.add(expl)
     return False
 
 def ignore(a,s,d):
@@ -233,9 +243,13 @@ def handleInputs():
                 if hasattr(s, "generated") and s.generated:
                     space.remove(s)
 
-        elif event.type == KEYDOWN and event.key == K_b:
+        elif event.type == KEYDOWN and event.key == K_TAB:
             aID = (aID + 1)%len(actors)
             activeActor = actors[aID]
+
+        elif event.type == KEYDOWN and event.key == K_e:
+            for a in actors:
+                a.setHP(100)
 
         elif event.type == KEYDOWN and event.key == K_g:
             generate_geometry(terrain_surface, space)
@@ -254,9 +268,6 @@ def handleInputs():
             pygame.draw.circle(terrain_surface, color, pos, 25)
 
     activeActor.handle()
-
-all_sprites = pygame.sprite.Group()
-img_dir = path.join(path.dirname(__file__), 'img')
 
 def main():
     pygame.init()
@@ -285,15 +296,6 @@ def main():
 
     draw_options = pymunk.pygame_util.DrawOptions(screen)
     pymunk.pygame_util.positive_y_is_up = False #using pygame coordinates
-
-    for i in range(9):
-        filename = 'regularExplosion0{}.png'.format(i)
-        img = pygame.image.load(path.join(img_dir, filename)).convert()
-        img.set_colorkey(THECOLORS["black"])
-        img_lg = pygame.transform.scale(img, (60, 60))
-        explosion_anim[30].append(img_lg)
-        img_sm = pygame.transform.scale(img, (30, 30))
-        explosion_anim[15].append(img_sm)
 
     fps = 120
     while True:
