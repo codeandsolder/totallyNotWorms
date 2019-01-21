@@ -24,6 +24,8 @@ COLLTYPE_BOOM = 101
 COLLTYPE_TERRAIN = 102
 COLLTYPE_PLAYER = 103
 
+TIME_PER_TURN = 20
+
 space = pymunk.Space()
 screen = pygame.display.set_mode((xSize,ySize))     #TODO? resizable
 bombs = []
@@ -140,10 +142,10 @@ class PlayerModel:
         mouseVector = unitVector(mouseOffset)
         if activeWeapon == 1:
             velocity = mouseVector*clip(self.getDistance(pygame.mouse.get_pos()), 0, 350)*3
-            body = makeMissileR(self.getPosition(),10, 3, velocity)
+            body = makeMissileR(self.getPosition(),20, 3, velocity)
         if activeWeapon == 2:
             velocity = mouseVector*800
-            body = makeGrenadeR(self.getPosition() - [0,2],40, 5, 5, velocity)
+            body = makeGrenadeR(self.getPosition() - [0,2],50, 5, 5, velocity)
         if activeWeapon == 3:
             velocity = mouseVector*500
             body = makeGrenadeR(self.getPosition() - [0,2],10, 2, 5, velocity, True)
@@ -173,8 +175,9 @@ def createActor(position, team):
     while len(actors) <= team:
         actors.append([])
     actors[team].append(PlayerModel(position, team)) 
-aID = [0,0]
+aID = [-1,0]
 activeWeapon = 1
+turnRemaining = 3
 
 def updateColors():    
     for t in actors:
@@ -199,17 +202,21 @@ def draw_helptext(screen):
         text = font.render(line, 1,THECOLORS["black"])
         screen.blit(text, (5,y))
         y += 10
+    
 
 def drawOverlays(screen):
     font = pygame.font.Font(None, 20)
     for t in actors:
         for a in t:
-            text = font.render(str(a.HP), 1,THECOLORS["black"])
+            text = font.render("{:3}".format(str(a.HP)), 1,THECOLORS["black"])
             screen.blit(text, (a.getPosition() - [0,20]))
     for b in bombs:
         time = (b.timeout - (pygame.time.get_ticks() - b.launchTime)/1000.0)
         text = font.render("{:01.1f}".format(time), 1,THECOLORS["black"])
         screen.blit(text, (b._get_body()._get_position() - [0,20]))
+    font = pygame.font.Font(None, 50)
+    text = font.render("Turn time remaining: {:01.2f}s".format(turnRemaining), 1,THECOLORS["black"])
+    screen.blit(text, (xSize/4,20)) 
 
 def generate_geometry(surface, space):
     for s in space.shapes:
@@ -305,7 +312,7 @@ class Bomb(pymunk.Circle):
             pass
         for t in actors:
             for a in t:
-                a.modHP(-clip(int(self.explosionSize*200000.0/(clip(a.getDistance(position) - self.explosionSize/1.5, 1, 200000))**4), 0, self.explosionSize*3))
+                a.modHP(-clip(int(self.explosionSize*200000.0/(clip(a.getDistance(position) - self.explosionSize/1.5, 1, 200000))**4), 0, self.explosionSize*2.5))
     def update(self):
         if (pygame.time.get_ticks() - self.launchTime)/1000 >= self.timeout:
             self.explode()
@@ -355,8 +362,19 @@ def handleExit(events):
 
 weaponsDict = {K_1:1, K_2:2, K_3:3, K_4:4}
 
-def handleInputs(events):
+def nextActor():
     global aID
+    aID = [aID[0], (aID[1] + 1)%len(actors[aID[0]])]
+    updateColors()
+
+def nextTeam():
+    global aID
+    aID = [(aID[0] + 1)%len(actors), 0]
+    aID[1] = random.randint(0, len(actors[aID[0]]) - 1)
+    print(aID)
+    updateColors()
+
+def handleInputs(events):
     global activeWeapon
     try:
         actors[aID[0]][aID[1]].handleActive()
@@ -367,12 +385,10 @@ def handleInputs(events):
             actors[aID[0]][aID[1]].shoot()
 
         elif event.type == KEYDOWN and event.key == K_TAB:
-            aID = [aID[0], (aID[1] + 1)%len(actors[aID[0]])]
-            updateColors()
+            nextActor()
 
         elif event.type == KEYDOWN and event.key == K_q:
-            aID = [(aID[0] + 1)%len(actors), aID[1]]
-            updateColors()
+            nextTeam()
 
         elif event.type == KEYDOWN and event.key == K_k:
             createActor(pygame.mouse.get_pos(), 0)
@@ -413,6 +429,18 @@ def generateTerrain():
             coords = [coords[0] + random.randint(int(-xSize/16), int(xSize/16)), coords[1] + random.randint(0, int(ySize/18))]
             cSize += random.randint(1, 5)
     generate_geometry(terrain_surface, space)
+
+turnStart = pygame.time.get_ticks()
+turnTime = 5
+def handleTurnTime():
+    global turnRemaining
+    global turnTime
+    global turnStart
+    turnRemaining = (turnTime - (pygame.time.get_ticks() - turnStart)/1000.0)
+    if turnRemaining < 0:
+        nextTeam()
+        turnStart = pygame.time.get_ticks()
+        turnTime = TIME_PER_TURN
 
 def main():
     createActor([xSize*1/7,ySize/5], 0)
@@ -469,6 +497,7 @@ def main():
         pygame.display.flip()
         pygame.display.set_caption("fps: " + str(clock.get_fps()))
         handleExit(events)
+        handleTurnTime()
 
 if __name__ == '__main__':
     sys.exit(main())
