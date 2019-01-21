@@ -1,8 +1,3 @@
-"""This is an example on how the autogeometry can be used for deformable 
-terrain.
-"""
-__docformat__ = "reStructuredText"
-
 import sys
 import random
 
@@ -21,20 +16,19 @@ import numpy
 
 xSize = 800
 ySize = 600
+FPS = 120
 
 COLLTYPE_DEFAULT = 0
 COLLTYPE_BORDER = 1
 COLLTYPE_BOOM = 101
 COLLTYPE_TERRAIN = 102
 COLLTYPE_PLAYER = 103
-FPS = 120
 
 space = pymunk.Space()
 screen = pygame.display.set_mode((xSize,ySize))     #TODO? resizable
 bombs = []
 
 terrain_surface = pygame.Surface((xSize,ySize))
-terrain_surface.fill(THECOLORS["white"])
 HP_surface = pygame.Surface((xSize,ySize))
 
 def clip(x, floor, ceil):
@@ -83,32 +77,30 @@ class PlayerBody(pymunk.Poly):
         shape = pymunk.Poly.create_box(body, size)
         super().__init__(body, shape.get_vertices(), transform, radius)
         self.color = THECOLORS["red"]
-        self.friction = 100
+        self.friction = 10
+        self.damping = 99
         self.collision_type = COLLTYPE_PLAYER
 
-def endGame(winningTeam):    
+ended = False
+
+def endGame(winningTeam):
+    global winText
+    global ended
+    ended = True
     font = pygame.font.Font(None, 120)
-    text = font.render("Team {} won!".format(winningTeam), 1,THECOLORS["black"])
-    while True:
-        draw_options = pymunk.pygame_util.DrawOptions(screen)
-        screen.fill(THECOLORS["white"])
-        screen.blit(terrain_surface, (0,0))
-        space.debug_draw(draw_options)
-        drawOverlays(screen)
-        draw_helptext(screen)
-        all_sprites.update()        
-        all_sprites.draw(screen)
-        screen.blit(text, (100, ySize/2-50))
-        pygame.display.flip()    
-        pygame.display.update()
-        clock.tick(FPS)
-        for event in pygame.event.get():
-            if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):  
-                sys.exit(0)
+    winText = font.render("Team {} won!".format(winningTeam), 1,THECOLORS["black"])
+
+
+def vectorLength(vec):
+    return (vec[0]**2 + vec[1]**2)**0.5
+
+def unitVector(vec):
+    return vec/vectorLength(vec)
+
 class PlayerModel:
     HP = 100
     team = 0
-    def __init__(self, position =  [xSize/2,ySize/4], team = 0):
+    def __init__(self, position =  [xSize/2,ySize/8], team = 0):
         mass = .3
         moment = pymunk.moment_for_box(mass, [0, 10])
         self.bodyReference = pymunk.Body(mass, moment)
@@ -116,40 +108,51 @@ class PlayerModel:
         self.shape = PlayerBody(self.bodyReference)
         self.team = team
         space.add(self.bodyReference, self.shape)
+    def getPosition(self):
+        return self.bodyReference.position
     def makeMovement(self):
-        keys_pressed = pygame.key.get_pressed()
+        kP = pygame.key.get_pressed()
         targetForce = [0,0]
-        if keys_pressed[pygame.K_LEFT]:
+        if kP[K_LEFT] or kP[K_a]:
             if self.shape.numberTouching > 0:
                 targetForce [0] = -1000;
             else:
                 targetForce [0] = -100;
-        elif keys_pressed[pygame.K_RIGHT]:
+        elif kP[K_RIGHT] or kP[K_d]:
             if self.shape.numberTouching > 0:
                 targetForce [0] = 1000;
             else:
                 targetForce [0] = 100;
-        if keys_pressed[pygame.K_UP] and self.shape.numberTouching > 0:
+        if (kP[K_UP] or kP[K_w])and self.shape.numberTouching > 0:
             targetForce [1] = -20000;
         self.bodyReference._set_force(targetForce)
         v = self.bodyReference._get_velocity()
         self.bodyReference._set_velocity([clip(v[0], -100, 100), clip(v[1], -270, 400)])
-    def handle(self):
+    def handleActive(self):
         self.makeMovement()
-        if not (self.bodyReference.position[0] >= 0 and self.bodyReference.position[0] <= xSize and self.bodyReference.position[1] >= 0 and self.bodyReference.position[1] <= ySize):
+    def handleInactive(self):
+        if not (self.getPosition()[0] >= 0 and self.getPosition()[0] <= xSize and self.getPosition()[1] >= 0 and self.getPosition()[1] <= ySize):
             self.setHP(-1)
+        v = self.bodyReference._get_velocity()
+        self.bodyReference._set_velocity([clip(v[0], -20, 20), clip(v[1], -270, 400)])
     def shoot(self):
+        mouseOffset = pygame.mouse.get_pos() - self.getPosition()
+        mouseVector = unitVector(mouseOffset)
         if activeWeapon == 1:
-            velocity = (pygame.mouse.get_pos() - self.bodyReference.position)/self.getDistance(pygame.mouse.get_pos())*clip(self.getDistance(pygame.mouse.get_pos()), 0, 300)*3
-            body = makeMissileR(self.bodyReference.position,10, 3, velocity)
+            velocity = mouseVector*clip(self.getDistance(pygame.mouse.get_pos()), 0, 350)*3
+            body = makeMissileR(self.getPosition(),10, 3, velocity)
         if activeWeapon == 2:
-            velocity = (pygame.mouse.get_pos() - self.bodyReference.position)/self.getDistance(pygame.mouse.get_pos())*500
-            body = makeGrenadeR(self.bodyReference.position - [0,20],40, 2, 5, velocity)
+            velocity = mouseVector*800
+            body = makeGrenadeR(self.getPosition() - [0,2],40, 5, 5, velocity)
         if activeWeapon == 3:
-            velocity = (pygame.mouse.get_pos() - self.bodyReference.position)/self.getDistance(pygame.mouse.get_pos())*500
-            body = makeGrenadeR(self.bodyReference.position - [0,20],15, 2, 5, velocity, True)
+            velocity = mouseVector*500
+            body = makeGrenadeR(self.getPosition() - [0,2],10, 2, 5, velocity, True)
+        if activeWeapon == 4:
+            torchPos = self.getPosition() + mouseVector*10
+            pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(torchPos[0]), int(torchPos[1])], 13)
+            generate_geometry(terrain_surface, space)
     def modHP(self, delta):
-        self.setHP(self.HP + delta)
+            self.setHP(self.HP + delta)
     def setHP(self, val):
         self.HP = val
         if self.HP <= 0:
@@ -161,7 +164,7 @@ class PlayerModel:
             aID[1] = 0
             updateColors()
     def getDistance(self, point):
-        return ((self.bodyReference.position[0] - point[0])**2 + (self.bodyReference.position[1] - point[1])**2)**0.5
+        return ((self.getPosition()[0] - point[0])**2 + (self.getPosition()[1] - point[1])**2)**0.5
     def setColor(self, color):
         self.shape.color = color
 
@@ -187,6 +190,7 @@ def draw_helptext(screen):
             "1. Bazooka",
             "2. Grenade",
             "3: Cluster Bomb",
+            "4: Blowtorch",
             "",
             "Active weapon: {}".format(activeWeapon)
             ]
@@ -201,7 +205,7 @@ def drawOverlays(screen):
     for t in actors:
         for a in t:
             text = font.render(str(a.HP), 1,THECOLORS["black"])
-            screen.blit(text, (a.bodyReference.position - [0,20]))
+            screen.blit(text, (a.getPosition() - [0,20]))
     for b in bombs:
         time = (b.timeout - (pygame.time.get_ticks() - b.launchTime)/1000.0)
         text = font.render("{:01.1f}".format(time), 1,THECOLORS["black"])
@@ -233,7 +237,7 @@ def generate_geometry(surface, space):
             p1 = line[i]
             p2 = line[i+1]
             shape = pymunk.Segment(space.static_body, p1, p2, 2)
-            shape.friction = 1
+            shape.friction = 10
             shape.color = THECOLORS["grey"]
             shape.generated = True
             shape.collision_type = COLLTYPE_TERRAIN
@@ -280,7 +284,7 @@ class Bomb(pymunk.Circle):
     def clusterSpawn(self):
         position = self._get_body()._get_position()
         for i in range(10):
-            makeMissileR(position - [0,10],10, 3, [random.randint(-60,60), random.randint(-420, -200)])
+            makeMissileR(position - [0,10],5, 3, [random.randint(-60,60), random.randint(-420, -200)])
         #makeMissile(position,6, [20,-400])
         #makeMissile(position,6, [0,-420])
         #makeMissile(position,6, [-20,-400])
@@ -301,7 +305,7 @@ class Bomb(pymunk.Circle):
             pass
         for t in actors:
             for a in t:
-                a.modHP(-clip(int(self.explosionSize*300000.0/a.getDistance(position)**4), 0, self.explosionSize*5))
+                a.modHP(-clip(int(self.explosionSize*200000.0/(clip(a.getDistance(position) - self.explosionSize/1.5, 1, 200000))**4), 0, self.explosionSize*3))
     def update(self):
         if (pygame.time.get_ticks() - self.launchTime)/1000 >= self.timeout:
             self.explode()
@@ -344,24 +348,23 @@ space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_TERRAIN).separate = endTou
 space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_PLAYER).begin = beginTouchingP
 space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_PLAYER).separate = endTouchingP
 
-def handleInputs():
-    global aID
-    global actors
-    global activeWeapon
-    events = pygame.event.get()
+def handleExit(events):
     for event in events:
-        if event.type == QUIT or \
-            event.type == KEYDOWN and (event.key in [K_ESCAPE]):  
+        if event.type == QUIT or event.type == KEYDOWN and (event.key in [K_ESCAPE]):  
             sys.exit(0)
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not (pygame.key.get_mods() & KMOD_CTRL):
+
+weaponsDict = {K_1:1, K_2:2, K_3:3, K_4:4}
+
+def handleInputs(events):
+    global aID
+    global activeWeapon
+    try:
+        actors[aID[0]][aID[1]].handleActive()
+    except:
+        pass
+    for event in events:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not (pygame.key.get_mods() & KMOD_CTRL):
             actors[aID[0]][aID[1]].shoot()
-        #elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and (pygame.key.get_mods() & KMOD_SHIFT):       
-        #    actors[aID[0]][aID[1]].shoot()           
-        elif event.type == KEYDOWN and event.key == K_r:
-            terrain_surface.fill(THECOLORS["white"])
-            for s in space.shapes:
-                if hasattr(s, "generated") and s.generated:
-                    space.remove(s)
 
         elif event.type == KEYDOWN and event.key == K_TAB:
             aID = [aID[0], (aID[1] + 1)%len(actors[aID[0]])]
@@ -370,10 +373,6 @@ def handleInputs():
         elif event.type == KEYDOWN and event.key == K_q:
             aID = [(aID[0] + 1)%len(actors), aID[1]]
             updateColors()
-
-        elif event.type == KEYDOWN and event.key == K_e:
-            for a in actors:
-                a.setHP(100)
 
         elif event.type == KEYDOWN and event.key == K_k:
             createActor(pygame.mouse.get_pos(), 0)
@@ -384,30 +383,18 @@ def handleInputs():
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and (pygame.key.get_mods() & KMOD_CTRL):
             generate_geometry(terrain_surface, space)
 
-        elif event.type == KEYDOWN and event.key == K_1:
-            activeWeapon = 1
-
-        elif event.type == KEYDOWN and event.key == K_2:
-            activeWeapon = 2
-
-        elif event.type == KEYDOWN and event.key == K_3:
-            activeWeapon = 3
+        elif event.type == KEYDOWN and event.key in weaponsDict:
+            activeWeapon = weaponsDict[event.key]
     
-    if pygame.mouse.get_pressed()[0]:
-        #if pygame.key.get_mods() & KMOD_SHIFT:
-        #    pass
-        if pygame.key.get_mods() & KMOD_CTRL:
-            color = THECOLORS["pink"] 
+    if pygame.mouse.get_pressed()[0] and (pygame.key.get_mods() & KMOD_CTRL):
+            color = THECOLORS["green"] 
             pos =  pygame.mouse.get_pos()
             pygame.draw.circle(terrain_surface, color, pos, 20)
-        else:
-        #    actors[aID[0]][aID[1]].shoot()
-            pass
-
-    actors[aID[0]][aID[1]].handle()
+    
 
 def generateTerrain():
     color = THECOLORS["green"] 
+    terrain_surface.fill(THECOLORS["white"])
     pygame.draw.line(terrain_surface, color, (0,ySize-10), (xSize,ySize-10), 20)
     pygame.draw.line(terrain_surface, color, (0,0), (0,ySize), 5)
     pygame.draw.line(terrain_surface, color, (xSize,0), (xSize,ySize), 5)
@@ -428,10 +415,6 @@ def generateTerrain():
     generate_geometry(terrain_surface, space)
 
 def main():
-    global actors
-    global aID
-    global screen
-    global clock
     createActor([xSize*1/7,ySize/5], 0)
     createActor([xSize*2/7,ySize/5], 0)
     createActor([xSize*5/7,ySize/5], 1)
@@ -463,20 +446,29 @@ def main():
     pymunk.pygame_util.positive_y_is_up = False #using pygame coordinates
     while True:
         space.step(1./FPS)
-        handleInputs()            
+        clock.tick(FPS)        
         screen.fill(THECOLORS["white"])
         screen.blit(terrain_surface, (0,0))
         space.debug_draw(draw_options)
         drawOverlays(screen)
         draw_helptext(screen)
-        for b in bombs:
-            b.update()
+        events = pygame.event.get()
+        if ended:
+            screen.blit(winText, (100, ySize/2-50))
+        else:
+            for b in bombs:
+                b.update()
+            for t in range(len(actors)):
+                for a in range(len(actors[t])):
+                    if t == aID[0] and a == aID[1]:
+                        handleInputs(events)
+                    else:
+                        actors[t][a].handleInactive()
         all_sprites.update()        
-        all_sprites.draw(screen)
-
+        all_sprites.draw(screen)        
         pygame.display.flip()
-        clock.tick(FPS)
         pygame.display.set_caption("fps: " + str(clock.get_fps()))
+        handleExit(events)
 
 if __name__ == '__main__':
     sys.exit(main())
