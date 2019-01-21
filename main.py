@@ -100,6 +100,7 @@ def unitVector(vec):
     return vec/vectorLength(vec)
 
 class PlayerModel:
+    shot = 0
     HP = 100
     team = 0
     def __init__(self, position =  [xSize/2,ySize/8], team = 0):
@@ -136,23 +137,26 @@ class PlayerModel:
         if not (self.getPosition()[0] >= 0 and self.getPosition()[0] <= xSize and self.getPosition()[1] >= 0 and self.getPosition()[1] <= ySize):
             self.setHP(-1)
         v = self.bodyReference._get_velocity()
-        self.bodyReference._set_velocity([clip(v[0], -20, 20), clip(v[1], -270, 400)])
+        self.bodyReference._set_velocity([clip(v[0], -2, 2), clip(v[1], -270, 400)])
     def shoot(self):
+        global turnRemaining
         mouseOffset = pygame.mouse.get_pos() - self.getPosition()
         mouseVector = unitVector(mouseOffset)
-        if activeWeapon == 1:
+        turnRemaining = min(turnRemaining, 4)
+        if activeWeapon == 1 and self.shot == 0:
             velocity = mouseVector*clip(self.getDistance(pygame.mouse.get_pos()), 0, 350)*3
             body = makeMissileR(self.getPosition(),20, 3, velocity)
-        if activeWeapon == 2:
+        if activeWeapon == 2 and self.shot == 0:
             velocity = mouseVector*800
             body = makeGrenadeR(self.getPosition() - [0,2],50, 5, 5, velocity)
-        if activeWeapon == 3:
+        if activeWeapon == 3 and self.shot == 0:
             velocity = mouseVector*500
             body = makeGrenadeR(self.getPosition() - [0,2],10, 2, 5, velocity, True)
-        if activeWeapon == 4:
+        if activeWeapon == 4 and self.shot < 5:
             torchPos = self.getPosition() + mouseVector*10
             pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(torchPos[0]), int(torchPos[1])], 13)
             generate_geometry(terrain_surface, space)
+        self.shot += 1
     def modHP(self, delta):
             self.setHP(self.HP + delta)
     def setHP(self, val):
@@ -164,6 +168,7 @@ class PlayerModel:
                 endGame(1 - self.team)
                 return
             aID[1] = 0
+            turnRemaining = 0
             updateColors()
     def getDistance(self, point):
         return ((self.getPosition()[0] - point[0])**2 + (self.getPosition()[1] - point[1])**2)**0.5
@@ -214,9 +219,10 @@ def drawOverlays(screen):
         time = (b.timeout - (pygame.time.get_ticks() - b.launchTime)/1000.0)
         text = font.render("{:01.1f}".format(time), 1,THECOLORS["black"])
         screen.blit(text, (b._get_body()._get_position() - [0,20]))
-    font = pygame.font.Font(None, 50)
-    text = font.render("Turn time remaining: {:01.2f}s".format(turnRemaining), 1,THECOLORS["black"])
-    screen.blit(text, (xSize/4,20)) 
+    if not ended:
+        font = pygame.font.Font(None, 50)
+        text = font.render("Turn time remaining: {:01.2f}s".format(turnRemaining), 1,THECOLORS["black"])
+        screen.blit(text, (xSize/4,20)) 
 
 def generate_geometry(surface, space):
     for s in space.shapes:
@@ -291,7 +297,8 @@ class Bomb(pymunk.Circle):
     def clusterSpawn(self):
         position = self._get_body()._get_position()
         for i in range(10):
-            makeMissileR(position - [0,10],5, 3, [random.randint(-60,60), random.randint(-420, -200)])
+            size = random.randint(4,6) + random.randint(0,2)
+            makeMissileR(position - [0,10],size, size/2, [random.randint(-60,60), random.randint(-420, -200)])
         #makeMissile(position,6, [20,-400])
         #makeMissile(position,6, [0,-420])
         #makeMissile(position,6, [-20,-400])
@@ -371,6 +378,9 @@ def nextTeam():
     global aID
     aID = [(aID[0] + 1)%len(actors), 0]
     aID[1] = random.randint(0, len(actors[aID[0]]) - 1)
+    for t in actors:
+        for a in t:
+            a.shot = 0
     updateColors()
 
 def handleInputs(events):
@@ -429,17 +439,17 @@ def generateTerrain():
             cSize += random.randint(1, 5)
     generate_geometry(terrain_surface, space)
 
-turnStart = pygame.time.get_ticks()
-turnTime = 5
+lastCheck = pygame.time.get_ticks()
+turnRemaining = 4
 def handleTurnTime():
     global turnRemaining
     global turnTime
-    global turnStart
-    turnRemaining = (turnTime - (pygame.time.get_ticks() - turnStart)/1000.0)
+    global lastCheck
+    turnRemaining -= (pygame.time.get_ticks() - lastCheck)/1000.0
     if turnRemaining < 0:
         nextTeam()
-        turnStart = pygame.time.get_ticks()
-        turnTime = TIME_PER_TURN
+        turnRemaining = TIME_PER_TURN
+    lastCheck = pygame.time.get_ticks()
 
 def main():
     createActor([xSize*1/7,ySize/5], 0)
@@ -491,12 +501,12 @@ def main():
                         handleInputs(events)
                     else:
                         actors[t][a].handleInactive()
+            handleTurnTime()
         all_sprites.update()        
         all_sprites.draw(screen)        
         pygame.display.flip()
         pygame.display.set_caption("fps: " + str(clock.get_fps()))
         handleExit(events)
-        handleTurnTime()
 
 if __name__ == '__main__':
     sys.exit(main())
