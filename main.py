@@ -371,7 +371,6 @@ def nextTeam():
     global aID
     aID = [(aID[0] + 1)%len(actors), 0]
     aID[1] = random.randint(0, len(actors[aID[0]]) - 1)
-    print(aID)
     updateColors()
 
 def handleInputs(events):
