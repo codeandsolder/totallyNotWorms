@@ -1,5 +1,8 @@
 import sys
 import random
+import socket
+import websocket
+from websocket import create_connection, WebSocket
 
 from os import path
 
@@ -429,8 +432,6 @@ def handleTurnTime():
     lastCheck = pygame.time.get_ticks()
 
 def main():
-    print(str(sys.argv))
-    pause = input()
     createActor([xSize*1/7,ySize/5], 0)
     createActor([xSize*2/7,ySize/5], 0)
     createActor([xSize*5/7,ySize/5], 1)
@@ -487,5 +488,17 @@ def main():
         pygame.display.set_caption("fps: " + str(clock.get_fps()))
         handleExit(events)
 
+def debug():
+    print(sys.argv)
+    global server
+    serverAddress = sys.argv[1]
+    myName = sys.argv[2]
+    server = websocket.create_connection(serverAddress)
+    server.send("g " + myName)
+    while True:
+        result =  server.recv()
+        print("Received '%s'" % result)
+
 if __name__ == '__main__':
-    sys.exit(main())
+    #sys.exit(main())
+    sys.exit(debug())
