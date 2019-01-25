@@ -82,7 +82,8 @@ class notWorms(WebSocket):
         print(self.address, 'connected')
 
     def handleClose(self):
-        clients.pop(self.address)
+        if address in clients:
+            clients.pop(self.address)
         print(self.address, 'closed')
 
 server = SimpleWebSocketServer('', 8000, notWorms)
