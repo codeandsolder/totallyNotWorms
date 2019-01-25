@@ -34,7 +34,7 @@ terrain_surface = pygame.Surface((xSize,ySize))
 HP_surface = pygame.Surface((xSize,ySize))
 
 def clip(x, floor, ceil):
-    return max(min(x, ceil), floor)
+ return max(min(x, ceil), floor)
 
 explosion_anim = {}
 
@@ -175,18 +175,21 @@ class PlayerModel:
     def setColor(self, color):
         self.shape.color = color
 
-actors = [[],[]]
+actors = []
 def createActor(position, team):
-    actors[team].append(PlayerModel(position, team))
-aID = [1,0]
+    while len(actors) <= team:
+        actors.append([])
+    actors[team].append(PlayerModel(position, team)) 
+aID = [-1,0]
 activeWeapon = 1
 turnRemaining = 3
 
-def updateColors():
-    for a in actors[0]:
-        a.setColor(THECOLORS["green"])
-    for a in actors[1]:
-        a.setColor(THECOLORS["red"])
+def updateColors():    
+    for t in actors:
+        for a in t:
+            a.setColor(THECOLORS["red"])
+    for a in actors[aID[0]]:
+            a.setColor(THECOLORS["green"])
     actors[aID[0]][aID[1]].setColor(THECOLORS["yellow"])
 
 def draw_helptext(screen):
@@ -382,17 +385,37 @@ def nextTeam():
 
 def handleInputs(events):
     global activeWeapon
-    if(aID[0] == 0): #player turn
-        try:
-            actors[aID[0]][aID[1]].handleActive()
-        except:
-            pass
-        for event in events:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not (pygame.key.get_mods() & KMOD_CTRL):
-                actors[aID[0]][aID[1]].shoot()
+    try:
+        actors[aID[0]][aID[1]].handleActive()
+    except:
+        pass
+    for event in events:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not (pygame.key.get_mods() & KMOD_CTRL):
+            actors[aID[0]][aID[1]].shoot()
 
-            elif event.type == KEYDOWN and event.key in weaponsDict:
-                activeWeapon = weaponsDict[event.key]    
+        elif event.type == KEYDOWN and event.key == K_TAB:
+            nextActor()
+
+        elif event.type == KEYDOWN and event.key == K_q:
+            nextTeam()
+
+        elif event.type == KEYDOWN and event.key == K_k:
+            createActor(pygame.mouse.get_pos(), 0)
+
+        elif event.type == KEYDOWN and event.key == K_l:
+            createActor(pygame.mouse.get_pos(), 1)
+       
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and (pygame.key.get_mods() & KMOD_CTRL):
+            generate_geometry(terrain_surface, space)
+
+        elif event.type == KEYDOWN and event.key in weaponsDict:
+            activeWeapon = weaponsDict[event.key]
+    
+    if pygame.mouse.get_pressed()[0] and (pygame.key.get_mods() & KMOD_CTRL):
+            color = THECOLORS["green"] 
+            pos =  pygame.mouse.get_pos()
+            pygame.draw.circle(terrain_surface, color, pos, 20)
+    
 
 def generateTerrain():
     color = THECOLORS["green"] 
@@ -418,6 +441,7 @@ def generateTerrain():
 
 lastCheck = pygame.time.get_ticks()
 turnRemaining = 4
+
 def handleTurnTime():
     global turnRemaining
     global turnTime
@@ -429,8 +453,6 @@ def handleTurnTime():
     lastCheck = pygame.time.get_ticks()
 
 def main():
-    print(str(sys.argv))
-    pause = input()
     createActor([xSize*1/7,ySize/5], 0)
     createActor([xSize*2/7,ySize/5], 0)
     createActor([xSize*5/7,ySize/5], 1)
