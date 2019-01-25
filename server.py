@@ -5,7 +5,7 @@ import hashlib
 clients = {}
 
 def nameLokup(name):
-    for c in clients:
+    for c in clients.values():
         if c.nickname == name:
             return c.address
 
@@ -31,10 +31,10 @@ class ClientData:
 
 class notWorms(WebSocket):
 
-    def handleMessage(self):
+    def handleMessage(self): #used codes: a,c,n,s,y
         action = self.data[0]
         argument = self.data[2:]
-        if action == "n": #set name
+        if action == "s": #set name
             print("name change:", self.address, argument)
             clients[self.address].nickname = argument
             updateClientList()
@@ -42,6 +42,15 @@ class notWorms(WebSocket):
             clients[self.address].available = (argument == "True")
             print("availability change:", clients[self.address].nickname, argument)
             updateClientList()
+        elif action == "c": #challenge
+            print("Challenge:", clients[self.address].nickname, self.address, "-->", argument, nameLokup(argument))
+            clients[nameLokup(argument)].handler.sendMessage("c " + clients[self.address].nickname)
+        elif action == "n": #rejected
+            clients[nameLokup(argument)].handler.sendMessage("n " + clients[self.address].nickname)
+        elif action == "y": #rejected
+            clients[nameLokup(argument)].handler.sendMessage("y " + clients[self.address].nickname)
+        else:
+            print(action, argument)
 
     def handleConnected(self):
         tempName = (hashlib.md5(str(self.address).encode('utf-8')).hexdigest())
