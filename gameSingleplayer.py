@@ -14,9 +14,9 @@ import pymunk.autogeometry
 
 import numpy
 
-xSize = 800
+xSize = 1200
 ySize = 600
-FPS = 120
+FPS = 60
 
 COLLTYPE_DEFAULT = 0
 COLLTYPE_BORDER = 1
@@ -41,7 +41,7 @@ explosion_anim = {}
 all_sprites = pygame.sprite.Group()
 img_dir = path.join(path.dirname(__file__), 'img')
 
-class Explosion(pygame.sprite.Sprite): #https://github.com/kidscancode/pygame_tutorials/blob/master/shmup/shmup-10.py
+class Explosion(pygame.sprite.Sprite): #modified from https://github.com/kidscancode/pygame_tutorials/blob/master/shmup/shmup-10.py
     def __init__(self, center, size):
         pygame.sprite.Sprite.__init__(self)
         self.size = size
@@ -142,20 +142,22 @@ class PlayerModel:
         global turnRemaining
         mouseOffset = pygame.mouse.get_pos() - self.getPosition()
         mouseVector = unitVector(mouseOffset)
-        turnRemaining = min(turnRemaining, 4)
+        if activeWeapon != 4:
+            turnRemaining = min(turnRemaining, 4)
         if activeWeapon == 1 and self.shot == 0:
             velocity = mouseVector*clip(self.getDistance(pygame.mouse.get_pos()), 0, 350)*3
-            body = makeMissileR(self.getPosition(),20, 3, velocity)
-        if activeWeapon == 2 and self.shot == 0:
+            body = makeMissileR(self.getPosition(),20, 4, velocity)
+        elif activeWeapon == 2 and self.shot == 0:
             velocity = mouseVector*800
             body = makeGrenadeR(self.getPosition() - [0,2],50, 5, 5, velocity)
-        if activeWeapon == 3 and self.shot == 0:
+        elif activeWeapon == 3 and self.shot == 0:
             velocity = mouseVector*500
-            body = makeGrenadeR(self.getPosition() - [0,2],10, 2, 5, velocity, True)
-        if activeWeapon == 4 and self.shot < 5:
+            body = makeGrenadeR(self.getPosition() - [0,2],20, 2, 5, velocity, True)
+        elif activeWeapon == 4 and self.shot < 15:
             torchPos = self.getPosition() + mouseVector*10
-            pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(torchPos[0]), int(torchPos[1])], 13)
-            generate_geometry(terrain_surface, space)
+            pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(torchPos[0]), int(torchPos[1])], 15)
+            update_geometry(terrain_surface, space, BB(torchPos[0] - 50, torchPos[1] - 50, torchPos[0] + 50, torchPos[1] + 50))
+
         self.shot += 1
     def modHP(self, delta):
             self.setHP(self.HP + delta)
@@ -202,10 +204,10 @@ def draw_helptext(screen):
             "",
             "Active weapon: {}".format(activeWeapon)
             ]
-    y = 5
+    y = 10
     for line in text:
         text = font.render(line, 1,THECOLORS["black"])
-        screen.blit(text, (5,y))
+        screen.blit(text, (10,y))
         y += 10
     
 
@@ -213,7 +215,7 @@ def drawOverlays(screen):
     font = pygame.font.Font(None, 20)
     for t in actors:
         for a in t:
-            text = font.render("{:3}".format(str(a.HP)), 1,THECOLORS["black"])
+            text = font.render("{:3.0f}".format(a.HP + 0.5), 1,THECOLORS["black"])
             screen.blit(text, (a.getPosition() - [0,20]))
     for b in bombs:
         time = (b.timeout - (pygame.time.get_ticks() - b.launchTime)/1000.0)
@@ -224,9 +226,10 @@ def drawOverlays(screen):
         text = font.render("Turn time remaining: {:01.2f}s".format(turnRemaining), 1,THECOLORS["black"])
         screen.blit(text, (xSize/4,20)) 
 
-def generate_geometry(surface, space):
+def update_geometry(surface, space, boundingBox):
+
     for s in space.shapes:
-        if hasattr(s, "generated") and s.generated:
+        if hasattr(s, "generated") and s.generated and boundingBox.contains(s._get_bb()):
             space.remove(s)
 
     def sample_func(point):
@@ -241,11 +244,13 @@ def generate_geometry(surface, space):
     def segment_func(v0, v1):
         line_set.collect_segment(v0, v1)
     
+    res = int(boundingBox.area()**0.5)
+
     pymunk.autogeometry.march_soft(
-        BB(0,0,xSize - 1,ySize - 1), 250, 250, 92, segment_func, sample_func) #generateBounding
+        boundingBox, res, res, 92, segment_func, sample_func)
 
     for polyline in line_set:
-        line = pymunk.autogeometry.simplify_curves(polyline, 0.8)
+        line = pymunk.autogeometry.simplify_curves(polyline, 1.2)
         for i in range(len(line)-1):
             p1 = line[i]
             p2 = line[i+1]
@@ -258,11 +263,11 @@ def generate_geometry(surface, space):
 
 def makeGrenadeR(position, size, timeout, radius, velocity = [0,0], cluster = False):
     mass = .2
-    moment = pymunk.moment_for_circle(mass, 0, size/5)
+    moment = pymunk.moment_for_circle(mass, 0, size/3)
     body = pymunk.Body(mass, moment)
     body.position = position
     shape = Bomb(body, radius, size, timeout, cluster)
-    shape.friction = .5
+    shape.friction = 2.5
     bombs.append(shape)
     space.add(body, shape)
     body._set_velocity(velocity)
@@ -275,13 +280,13 @@ def makeMissileR(position, size, radius, velocity = [0,0]):
     body = pymunk.Body(mass, moment)
     body.position = position
     shape = Bomb(body, radius, size)
-    shape.friction = .5
     shape.collision_type = COLLTYPE_BOOM
     space.add(body, shape)
     body._set_velocity(velocity)
     return body
+
 def makeMissile(position, size, velocity = [0,0]):
-    return makeMissileR(position, size, size/5, velocity)
+    return makeMissileR(position, size, size/2, velocity)
 
 class Bomb(pymunk.Circle):
     exploded = False
@@ -296,9 +301,9 @@ class Bomb(pymunk.Circle):
 
     def clusterSpawn(self):
         position = self._get_body()._get_position()
-        for i in range(10):
-            size = random.randint(4,6) + random.randint(0,2)
-            makeMissileR(position - [0,10],size, size/2, [random.randint(-60,60), random.randint(-420, -200)])
+        for i in range(5):
+            size = random.randint(8,10) + random.randint(6,8)
+            makeMissileR(position - [0,10],size, size/3, [random.randint(-60,60), random.randint(-420, -200)])
         #makeMissile(position,6, [20,-400])
         #makeMissile(position,6, [0,-420])
         #makeMissile(position,6, [-20,-400])
@@ -308,7 +313,7 @@ class Bomb(pymunk.Circle):
         expl = Explosion(position, self.explosionSize)
         all_sprites.add(expl)
         pygame.draw.circle(terrain_surface, THECOLORS["white"], [int(position[0]), int(position[1])], self.explosionSize)
-        generate_geometry(terrain_surface, space)
+        update_geometry(terrain_surface, space, BB(position[0] - self.explosionSize * 4, position[1] - self.explosionSize * 4,position[0] + self.explosionSize * 4, position[1] + self.explosionSize * 4))
         if self in bombs:
             bombs.remove(self)
         if(self.cluster):
@@ -353,9 +358,11 @@ def endTouchingG(a,s,d):
     return True
 
 
+space.add_collision_handler(COLLTYPE_BOOM, COLLTYPE_TERRAIN).begin = BOOM
 space.add_collision_handler(COLLTYPE_BOOM, COLLTYPE_TERRAIN).pre_solve = BOOM
-space.add_collision_handler(COLLTYPE_DEFAULT, COLLTYPE_BOOM).pre_solve = ignore
+space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_BOOM).begin = ignore
 space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_BOOM).pre_solve = ignore
+space.add_collision_handler(COLLTYPE_BOOM, COLLTYPE_BOOM).begin = ignore
 space.add_collision_handler(COLLTYPE_BOOM, COLLTYPE_BOOM).pre_solve = ignore
 space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_TERRAIN).begin = beginTouchingG
 space.add_collision_handler(COLLTYPE_PLAYER, COLLTYPE_TERRAIN).separate = endTouchingG
@@ -406,7 +413,7 @@ def handleInputs(events):
             createActor(pygame.mouse.get_pos(), 1)
        
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and (pygame.key.get_mods() & KMOD_CTRL):
-            generate_geometry(terrain_surface, space)
+            update_geometry(terrain_surface, space, BB(0,0,xSize - 1,ySize - 1))
 
         elif event.type == KEYDOWN and event.key in weaponsDict:
             activeWeapon = weaponsDict[event.key]
@@ -423,21 +430,28 @@ def generateTerrain():
     pygame.draw.line(terrain_surface, color, (0,ySize-10), (xSize,ySize-10), 20)
     pygame.draw.line(terrain_surface, color, (0,0), (0,ySize), 5)
     pygame.draw.line(terrain_surface, color, (xSize,0), (xSize,ySize), 5)
-    for i in range(random.randint(4,7)):
-        cSize = random.randint(5, 15)
+    for i in range(random.randint(3,5)):
+        cSize = random.randint(7, 15)
         coords = [random.randint(0, xSize),random.randint(ySize/3, ySize*2/5)]
         while coords[1] < ySize+100:
             pygame.draw.circle(terrain_surface, color, coords, cSize)
-            coords = [coords[0] + random.randint(int(-xSize/16), int(xSize/16)), coords[1] + random.randint(0, int(ySize/18))]
-            cSize += random.randint(1, 5)            
-    for i in range(random.randint(10,15)):
-        cSize = random.randint(3, 10)
+            coords = [coords[0] + random.randint(int(-xSize/16), int(xSize/16)), coords[1] + random.randint(cSize//4, cSize//2)]
+            cSize += random.randint(1, 3)            
+    for i in range(random.randint(6,10)):
+        cSize = random.randint(4, 10)
         coords = [random.randint(0, xSize),random.randint(ySize*2/3, ySize)]
         while coords[1] < ySize+100:
             pygame.draw.circle(terrain_surface, color, coords, cSize)
-            coords = [coords[0] + random.randint(int(-xSize/16), int(xSize/16)), coords[1] + random.randint(0, int(ySize/18))]
-            cSize += random.randint(1, 5)
-    generate_geometry(terrain_surface, space)
+            coords = [coords[0] + random.randint(int(-xSize/16), int(xSize/16)), coords[1] + random.randint(cSize//2, cSize)]
+            cSize += random.randint(2, 5)
+    for i in range(random.randint(50,70)):
+        cSize = random.randint(8, 13)
+        coords = [random.randint(0, xSize),random.randint(ySize*7/8, ySize)]
+        while coords[1] < ySize+100:
+            pygame.draw.circle(terrain_surface, color, coords, cSize)
+            coords = [coords[0] + random.randint(int(-xSize/16), int(xSize/16)), coords[1] + random.randint(cSize//2, cSize)]
+            cSize += random.randint(3, 5)
+    update_geometry(terrain_surface, space, BB(0,0,xSize - 1,ySize - 1))
 
 lastCheck = pygame.time.get_ticks()
 turnRemaining = 4
